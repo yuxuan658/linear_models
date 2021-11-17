@@ -159,3 +159,69 @@ broom::glance(fit)
 -   Hence, previously is comparing brooklyn to the bronx and mahattan to
     bronx…, now we are comparing brooklyn to manhattan and bronx to
     mahattan…
+
+### Diagnostics:
+
+1.  residuals based on model fit
+
+``` r
+# modelr::add_residuals(nyc_airbnb, fit) %>% # modelr::add_residuals(dataset, model)
+
+nyc_airbnb %>% 
+modelr::add_residuals(fit) %>% # modelr::add_residuals(model)
+  ggplot(aes(x = borough, y = resid)) +
+  geom_violin() + 
+  ylim(-500, 1500) # zoom in the plot
+```
+
+    ## Warning: Removed 9993 rows containing non-finite values (stat_ydensity).
+
+<img src="Linear_models_files/figure-gfm/unnamed-chunk-9-1.png" width="90%" />
+
+``` r
+nyc_airbnb %>% 
+  modelr::add_residuals(fit) %>% 
+  ggplot(aes(x = stars, y = resid)) +
+  geom_point() +
+  facet_wrap(. ~ borough)
+```
+
+    ## Warning: Removed 9962 rows containing missing values (geom_point).
+
+<img src="Linear_models_files/figure-gfm/unnamed-chunk-9-2.png" width="90%" />
+
+### Hypothesis tests"
+
+1.  t-test by default: indivudual test:
+
+``` r
+fit %>% 
+  broom::tidy()
+```
+
+    ## # A tibble: 5 × 5
+    ##   term            estimate std.error statistic   p.value
+    ##   <chr>              <dbl>     <dbl>     <dbl>     <dbl>
+    ## 1 (Intercept)         19.8     12.2       1.63 1.04e-  1
+    ## 2 stars               32.0      2.53     12.7  1.27e- 36
+    ## 3 boroughBrooklyn    -49.8      2.23    -22.3  6.32e-109
+    ## 4 boroughQueens      -77.0      3.73    -20.7  2.58e- 94
+    ## 5 boroughBronx       -90.3      8.57    -10.5  6.64e- 26
+
+2.  F-test:
+
+multiple comparisons: significance of “borough”: all three… at the same
+time:
+
+``` r
+fit_null = lm(price ~ stars, data = nyc_airbnb)
+fit_alt = lm(price ~ stars + borough, data = nyc_airbnb)
+anova(fit_null, fit_alt) %>% 
+  broom::tidy()
+```
+
+    ## # A tibble: 2 × 6
+    ##   res.df         rss    df     sumsq statistic    p.value
+    ##    <dbl>       <dbl> <dbl>     <dbl>     <dbl>      <dbl>
+    ## 1  30528 1030861841.    NA       NA        NA  NA        
+    ## 2  30525 1005601724.     3 25260117.      256.  7.84e-164
