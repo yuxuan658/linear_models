@@ -31,8 +31,8 @@ set.seed(1)
 ```
 
 
-### CV “by hand”
-How to find the best fit line: cross validation by hand
+### Cross validation - "by hand"
+How to find the best fit line: 
 
 ```{r}
 nonlin_df = 
@@ -109,6 +109,9 @@ rmse(linear_mod, test_df)
 rmse(smooth_mod, test_df) # smallest, make the best predictions
 rmse(wiggly_mod, test_df)
 ```
+
+### Cross validation - using `modelr`
+
 
 
 
