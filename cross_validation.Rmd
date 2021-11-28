@@ -1,0 +1,114 @@
+---
+title: "cross_validation"
+author: "Yuxuan Chen"
+date: "11/23/2021"
+output: html_document
+---
+**Model selection!**: HOW TO CHOOSE THE  RIGHT MODEL
+
+```{r message = FALSE}
+library(tidyverse)
+library(modelr)
+library(mgcv)
+
+knitr::opts_chunk$set(
+  fig.width = 8,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis", 
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+
+set.seed(1)
+```
+
+
+### CV “by hand”
+How to find the best fit line: cross validation by hand
+
+```{r}
+nonlin_df = 
+  tibble(
+    id = 1:100,
+    x = runif(100, 0, 1),
+    y = 1 - 10 * (x - .3) ^ 2 + rnorm(100, 0, .3)
+  )
+
+nonlin_df %>% 
+  ggplot(aes(x = x, y = y)) + 
+  geom_point()
+```
+1. get training and testing datasets:
+    Training: 80%, testing: 20% (everything else than training)
+    
+```{r}
+train_df = sample_n(nonlin_df, size = 80)
+test_df = anti_join(nonlin_df, train_df, by = "id") # everything in `nonlin_df`, but not in `train_df`, by `id`.
+```
+
+2. Fit three models:
+
+```{r}
+# linear model:
+linear_mod = lm(y ~ x, data = train_df)
+
+# smooth model:
+smooth_mod = gam(y ~ s(x), data = train_df)
+
+# wiggly model
+wiggly_mod = gam(y ~ s(x, k = 30), sp = 10e-6, data = train_df)
+```
+
+
+ - plot the three fits: 
+ **smooth model should do best in terms of prediction accuracy!**
+```{r}
+train_df %>% 
+  add_predictions(linear_mod) %>% #add prediction values
+  ggplot(aes(x = x, y = y)) +
+  geom_point() +
+  geom_line(aes(y = pred), color = "red") # add line that y is prediction values
+
+train_df %>% 
+  add_predictions(smooth_mod) %>% 
+  ggplot(aes(x = x, y = y)) +
+  geom_point() +
+  geom_line(aes(y = pred), color = "red") 
+
+train_df %>% 
+  add_predictions(wiggly_mod) %>% 
+  ggplot(aes(x = x, y = y)) +
+  geom_point() +
+  geom_line(aes(y = pred), color = "red") 
+```
+ 
+ - plot the three fits at the same time    
+Add predictions to multiple models at the same time:
+```{r}
+train_df %>% 
+  gather_predictions(linear_mod, smooth_mod, wiggly_mod) %>% #add all prediction values
+  ggplot(aes(x = x, y = y)) +
+  geom_point() +
+  geom_line(aes(y = pred), color = "red") +
+  facet_grid(. ~ model)
+```
+
+3. check prediction accuracy:    
+compute root mean squared errors (RMSEs) for each model.   
+
+```{r}
+rmse(linear_mod, test_df)
+rmse(smooth_mod, test_df) # smallest, make the best predictions
+rmse(wiggly_mod, test_df)
+```
+
+
+

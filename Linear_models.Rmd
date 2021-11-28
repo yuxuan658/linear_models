@@ -28,7 +28,7 @@ scale_colour_discrete = scale_colour_viridis_d
 scale_fill_discrete = scale_fill_viridis_d
 ```
 
-### Import data:
+Import data:
 
 ```{r}
 data("nyc_airbnb")
@@ -43,32 +43,44 @@ nyc_airbnb =
   select(price, stars, borough, neighborhood, room_type)
 ```
 
-### Fit a model:
+### Model fitting:
 
 ```{r}
 nyc_airbnb %>% 
   ggplot(aes(x = stars, y = price, color = borough)) +
   geom_point()
+```
 
-# linear model: whether price as an outcome depends on rating and borough
+1. linear model: whether price as an outcome depends on rating and borough
+
+```{r}
 fit = lm(price ~ stars + borough, data = nyc_airbnb)
 ```
 
-Let's look at the results:
+Formula specification of lm function: 
+ - outcome on the left of the ~ and predictors separated by + on the right. 
+ - interactions between variables can be specified using *. 
+ - Can also specify an intercept-only model (outcome ~ 1), a model with no intercept (outcome ~ 0 + ...), and a model using all available predictors (outcome ~ .).
+
+2. Let's look at the results:
 
 ```{r, include = FALSE}
+# not good: 
 fit
-
 summary(fit)
 summary(fit)$coef
 coef(fit)
 residuals(fit)
 ```
 
-Better way to look at the results:
+Better way:
+1). broom package: obtaining a quick summary of the model and for cleaning up the coefficient table.
 ```{r}
-broom::glance(fit) #format in datafram
+# both create in dataframe: 
+## 1):
+broom::glance(fit) 
 
+## 2): Better? 
 broom::tidy(fit) %>% # in alphabetical order, Boronx as reference group
   select(-std.error, -statistic) %>% 
   mutate(
@@ -80,10 +92,10 @@ broom::tidy(fit) %>% # in alphabetical order, Boronx as reference group
 
 ### Be in control of factor:
 
-1. Change reference group:
+1. Change the reference group:
 
 ```{r}
-# change to make the reference group be the most airbnb rentals
+# change the reference group to be the most airbnb rentals
 
 nyc_airbnb =
   nyc_airbnb %>% 
@@ -112,9 +124,11 @@ broom::glance(fit)
 
 ### Diagnostics:
 
-1. residuals based on model fit
+1.modelr package can be used to add residuals and fitted values to a dataframe.
+
+1) add residuals based on model fit:
 ```{r}
-# modelr::add_residuals(nyc_airbnb, fit) %>% # modelr::add_residuals(dataset, model)
+# modelr::add_residuals(dataset, model)
 
 nyc_airbnb %>% 
 modelr::add_residuals(fit) %>% # modelr::add_residuals(model)
@@ -130,18 +144,18 @@ nyc_airbnb %>%
   facet_wrap(. ~ borough)
 ```
 
-### Hypothesis tests"
+### Hypothesis tests:
 
-1. t-test by default: 
-indivudual test:
+1. t-test for single coefficients by default: 
+Indiviual test: comparing each of three borough at a time:
+
 ```{r}
 fit %>% 
   broom::tidy()
 ```
 
 2. F-test:
-
-multiple comparisons: significance of "borough": all three... at the same time:
+Multiple comparisons: significance of "borough": comparing all three borough at the same time:
 ```{r}
 fit_null = lm(price ~ stars, data = nyc_airbnb)
 fit_alt = lm(price ~ stars + borough, data = nyc_airbnb)
@@ -149,12 +163,84 @@ anova(fit_null, fit_alt) %>%
   broom::tidy()
 ```
 
+### Nest data, fit models
+
+```{r}
+# not good: 
+fit = lm(price ~ stars * borough + room_type * borough, data = nyc_airbnb)
+broom::tidy(fit)
+```
+
+This is more exploratory but many easier to understand.
+```{r}
+# Better: 
+
+nyc_airbnb %>% 
+  nest(data = -borough) %>% # nest everyghing except borough
+  mutate(
+    models = map(.x = data, ~lm(price ~ stars + room_type, data = .x)),
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(-data, -models) %>% 
+  unnest(results) %>% 
+  filter(term != "(Intercept)") %>% 
+  select(borough, term, estimate) %>% 
+  pivot_wider(
+    names_from = "borough",
+    values_from = "estimate"
+  )
+```
 
 
+Example: shows neighborhood-specific estimates for the coefficients related to room type.
+```{r}
+nyc_airbnb %>% 
+  filter(borough == "Manhattan") %>% 
+  nest(data = -neighborhood) %>% 
+   mutate(
+    models = map(.x = data, ~lm(price ~ stars + room_type, data = .x)),
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(-data, -models) %>% 
+  unnest(results) %>% 
+  filter(str_detect(term, "room_type")) %>% 
+  ggplot(aes(x = neighborhood, y = estimate)) +
+  geom_point() +
+  facet_wrap(. ~ term) +
+  theme(axis.text.x = element_text(angle = 80, hjust = 1))
 
+```
 
+### Logistic regression: Binary outcome
+```{r}
+nyc_airbnb = 
+  nyc_airbnb %>% 
+  mutate(
+    expensive_apt = as.numeric(price > 500)
+  )
+```
 
+Fit a logistic regression for the binary outcome: glm()
 
+```{r}
+logistic_fit = 
+  glm(
+    expensive_apt ~ stars + borough, 
+    data = nyc_airbnb,
+    family = binomial())
 
+logistic_fit %>% 
+  broom::tidy() %>% 
+  mutate(
+    term = str_replace(term, "borough", "Borough:"),
+    estimate = exp(estimate)
+  ) %>% 
+  select(term, OR = estimate, p.value)
+```
 
+```{r}
+nyc_airbnb %>% 
+  modelr::add_predictions(logistic_fit) %>% 
+  mutate(pred = boot::inv.logit(pred)) #inverse logit function
+```
 
