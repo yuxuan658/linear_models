@@ -7,9 +7,13 @@ output: html_document
 **Repeated sampling**: iterative tool
  - what is the variance of estimated intercepts and slopes in repeated different samples?
  
+# Bootstrap works well when assumptions are not met and met! (no need to assume normal distribution)
+
+
 ```{r message = FALSE}
 library(tidyverse)
 library(p8105.datasets)
+library(modelr)
 
 knitr::opts_chunk$set(
   fig.width = 8,
@@ -61,6 +65,7 @@ sim_df_nonconst %>%
   geom_smooth(method = "lm")
 ```
 ```{r}
+# assume constant residual variance
 lm(y ~ x, data = sim_df_const) %>% broom::tidy()
 lm(y ~ x, data = sim_df_nonconst) %>% broom::tidy()
 ```
@@ -90,6 +95,143 @@ boot_sample(sim_df_nonconst) %>%
 boot_sample(sim_df_nonconst) %>% 
   lm(y ~ x, data = .) %>% 
   broom::tidy()
+```
+### many samples and analysis
+
+1. Drawing many bootstrap samples
+
+```{r}
+boot_straps = 
+  tibble(
+    strap_number = 1:1000,
+    strap_sample = rerun(1000, boot_sample(sim_df_nonconst))
+  )
+
+# check 1st dataframe:
+## boot_straps %>% pull(strap_sample) %>% .[[1]] 
+```
+
+2. Run analysis on it:
+
+```{r}
+boot_results = 
+  boot_straps %>% 
+  mutate(
+    models = map(strap_sample, ~lm(y ~ x, data = .x)),
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(strap_number, results) %>% 
+  unnest(results)
+
+boot_results
+```
+3. distribution of estimated slopes and intercepts
+
+```{r}
+boot_results %>% 
+  group_by(term) %>% 
+  summarize(
+    mean_est = mean(estimate),
+    sd_est = sd(estimate)
+  )
+```
+
+```{r}
+boot_results %>% 
+  filter(term == "x") %>%  # only focus on intercept
+  ggplot(aes(x = estimate)) +
+  geom_density()
+```
+
+3. bootstrap Confidence Interval:
+
+```{r}
+boot_results %>% 
+  group_by(term) %>% 
+  summarize(
+    ci_lower = quantile(estimate, 0.025),
+    ci_upper = quantile(estimate, 0.975),
+  )
+```
+
+### Boptstrap using modelr
+simplify:
+
+```{r}
+# similar than previous results
+
+sim_df_nonconst %>% 
+  bootstrap(1000, id = "strap_number") %>% 
+  mutate(
+    models = map(.x = strap, ~lm(y ~ x, data = .x)),
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(strap_number, results) %>% 
+  unnest(results) %>% 
+  group_by(term) %>% 
+  summarize(mean_est = mean(estimate),
+    sd_est = sd(estimate)
+  )
+```
+
+ - Does bootstrap also work well when assumptions met? Yes!
+
+### revisit nyc airbnb
+
+```{r}
+data("nyc_airbnb")
+
+nyc_airbnb = 
+  nyc_airbnb %>% 
+  mutate(stars = review_scores_location / 2) %>% 
+  rename(
+    borough = neighbourhood_group,
+    neighborhood = neighbourhood) %>% 
+  filter(borough != "Staten Island") %>% 
+  select(price, stars, borough, neighborhood, room_type)
+```
+
+```{r}
+nyc_airbnb %>% 
+  ggplot(aes(x = stars, y = price)) +
+  geom_point()
+```
+
+```{r}
+airbnb_boot_results = 
+  nyc_airbnb %>% 
+  filter(borough == "Manhattan") %>% 
+  drop_na(stars) %>% 
+  bootstrap(1000, id = "strap_number") %>% 
+  mutate(
+    models = map(.x = strap, ~lm(price ~ stars, data = .x)),
+    results = map(models, broom::tidy)
+  ) %>% 
+  select(strap_number, results) %>% 
+  unnest(results)
+
+airbnb_boot_results %>% 
+  group_by(term) %>% 
+  summarize(mean_est = mean(estimate),
+    sd_est = sd(estimate)
+  )
+```
+
+compare this to `lm`:
+
+```{r}
+nyc_airbnb %>% 
+  filter(borough == "Manhattan") %>% 
+  drop_na(stars) %>% 
+  lm(price ~ stars, data = .) %>% 
+  broom::tidy()
+```
+
+```{r}
+airbnb_boot_results %>% 
+  filter(term == "stars") %>% 
+  ggplot(aes(x = estimate)) +
+  geom_density()
 ```
 
 
